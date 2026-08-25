@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/geoffowuor/url-shortener/internals/models"
 	"github.com/geoffowuor/url-shortener/internals/utils"
 	"github.com/gofiber/fiber/v3"
@@ -19,18 +22,64 @@ func NewURLHandler(db *gorm.DB) *URLHandler {
 
 func (h *URLHandler) CreateShortURL(c fiber.Ctx) error {
 	var url models.URL
+
 	if err := c.Bind().Body(&url); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Internal Server error",
+			"error": "Invalid request body",
 		})
 	}
 
-	url.ShortCode = utils.GenerateShortCode(6)
+	for {
+		url.ShortCode = utils.GenerateShortCode(6)
+
+		var existing models.URL
+
+		result := h.DB.Where("short_code = ?", url.ShortCode).First(&existing)
+
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			break
+		}
+
+		if result.Error != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to generate short URL",
+			})
+		}
+	}
 
 	if err := h.DB.Create(&url).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal Server error",
+			"error": "Failed to create short URL",
 		})
 	}
+
 	return c.Status(fiber.StatusCreated).JSON(url)
+}
+
+func (h *URLHandler) RedirectURL(c fiber.Ctx) error {
+	shortCode := c.Params("shortCode")
+
+	fmt.Println("SHORT CODE:", shortCode)
+
+	var url models.URL
+
+	if err := h.DB.Where("short_code = ?", shortCode).First(&url).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "URL not found",
+		})
+	}
+
+	fmt.Println("FOUND URL:", url.OriginalURL)
+
+	url.Clicks++
+
+	if err := h.DB.Save(&url).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update clicks",
+		})
+	}
+
+	fmt.Println("REDIRECTING TO:", url.OriginalURL)
+
+	return c.Redirect().Status(fiber.StatusFound).To(url.OriginalURL)
 }
