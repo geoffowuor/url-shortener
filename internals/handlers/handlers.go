@@ -83,3 +83,20 @@ func (h *URLHandler) RedirectURL(c fiber.Ctx) error {
 
 	return c.Redirect().Status(fiber.StatusFound).To(url.OriginalURL)
 }
+
+func (h *URLHandler) GetURLStats(c fiber.Ctx) error {
+	shortCode := c.Params("shortCode")
+
+	var url models.URL
+	if err := h.DB.Where("short_code = ?", shortCode).First(&url).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "URL not found",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"original_url": url.OriginalURL,
+		"short_code":   url.ShortCode,
+		"clicks":       url.Clicks,
+	})
+}
