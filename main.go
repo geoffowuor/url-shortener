@@ -25,7 +25,7 @@ func main() {
 	app := fiber.New()
 
 	app.Post("/api/shorten", handler.CreateShortURL)
-
+	app.Get("/:shortCode", handler.RedirectURL)
 	log.Fatal(app.Listen(":3000"))
 
 }
