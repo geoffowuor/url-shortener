@@ -27,6 +27,7 @@ func main() {
 	app.Post("/api/shorten", handler.CreateShortURL)
 	app.Get("/api/stats/:shortCode", handler.GetURLStats)
 	app.Get("/:shortCode", handler.RedirectURL)
+	app.Get("/api/qrcode/:code", handler.GenerateQR)
 	log.Fatal(app.Listen(":3000"))
 
 }

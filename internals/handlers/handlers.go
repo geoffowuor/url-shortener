@@ -3,10 +3,13 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/geoffowuor/url-shortener/internals/models"
 	"github.com/geoffowuor/url-shortener/internals/utils"
+	"github.com/go-chi/chi/v5"
 	"github.com/gofiber/fiber/v3"
+	"github.com/skip2/go-qrcode"
 	"gorm.io/gorm"
 )
 
@@ -99,4 +102,24 @@ func (h *URLHandler) GetURLStats(c fiber.Ctx) error {
 		"short_code":   url.ShortCode,
 		"clicks":       url.Clicks,
 	})
+}
+
+func (h *URLHandler) GenerateQR(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+
+	shortURL := "http://127.0.0.1:3000/" + code
+
+	png, err := qrcode.Encode(
+		shortURL,
+		qrcode.Medium,
+		512,
+	)
+	if err != nil {
+		http.Error(w, "failed to generate QR code", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.WriteHeader(http.StatusOK)
+	w.Write(png)
 }
