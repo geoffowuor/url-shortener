@@ -3,16 +3,19 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/geoffowuor/url-shortener/internals/models"
 	"github.com/geoffowuor/url-shortener/internals/utils"
+	worker "github.com/geoffowuor/url-shortener/internals/workers"
 	"github.com/gofiber/fiber/v3"
 	"github.com/skip2/go-qrcode"
 	"gorm.io/gorm"
 )
 
 type URLHandler struct {
-	DB *gorm.DB
+	DB         *gorm.DB
+	ClickQueue *worker.ClickEventQueue
 }
 
 func NewURLHandler(db *gorm.DB) *URLHandler {
@@ -78,6 +81,19 @@ func (h *URLHandler) RedirectURL(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update clicks",
 		})
+	}
+
+	event := models.ClickEvent{
+		IPAddress: c.IP(),
+		UserAgent: c.Get("User-Agent"),
+		Referer:   c.Get("Referer"),
+		CreatedAt: time.Now(),
+	}
+
+	select {
+	case h.ClickQueue.Events <- event:
+	default:
+		fmt.Println("CLICK EVENT QUEUE FULL")
 	}
 
 	fmt.Println("REDIRECTING TO:", url.OriginalURL)

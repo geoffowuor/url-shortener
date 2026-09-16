@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/geoffowuor/url-shortener/internals/handlers"
+	worker "github.com/geoffowuor/url-shortener/internals/workers"
 
 	"github.com/geoffowuor/url-shortener/internals/models"
 
@@ -19,8 +20,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	clickQueue := worker.NewClickEventQueue(1000)
+
 	db.AutoMigrate(&models.URL{})
-	handler := handlers.NewURLHandler(db)
+	handler := &handlers.URLHandler{
+		DB:         db,
+		ClickQueue: clickQueue,
+	}
 
 	app := fiber.New()
 
