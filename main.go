@@ -19,10 +19,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	db.AutoMigrate(
+		&models.URL{},
+		&models.ClickEvent{},
+	)
 
+	db.AutoMigrate(
+		&models.URL{},
+		&models.ClickEvent{},
+	)
 	clickQueue := worker.NewClickEventQueue(1000)
 
-	db.AutoMigrate(&models.URL{})
+	worker.StartClickWorker(db, clickQueue)
+
 	handler := &handlers.URLHandler{
 		DB:         db,
 		ClickQueue: clickQueue,
