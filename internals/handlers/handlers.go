@@ -59,11 +59,8 @@ func (h *URLHandler) CreateShortURL(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(url)
 }
-
 func (h *URLHandler) RedirectURL(c fiber.Ctx) error {
 	shortCode := c.Params("shortCode")
-
-	fmt.Println("SHORT CODE:", shortCode)
 
 	var url models.URL
 
@@ -72,8 +69,6 @@ func (h *URLHandler) RedirectURL(c fiber.Ctx) error {
 			"error": "URL not found",
 		})
 	}
-
-	fmt.Println("FOUND URL:", url.OriginalURL)
 
 	url.Clicks++
 
@@ -83,38 +78,82 @@ func (h *URLHandler) RedirectURL(c fiber.Ctx) error {
 		})
 	}
 
+	// Analytics event
 	event := models.ClickEvent{
-		IPAddress: c.IP(),
-		UserAgent: c.Get("User-Agent"),
-		Referer:   c.Get("Referer"),
-		CreatedAt: time.Now(),
+		ShortURLID: url.ID,
+		IPAddress:  c.IP(),
+		UserAgent:  c.Get("User-Agent"),
+		Referer:    c.Get("Referer"),
+		CreatedAt:  time.Now(),
 	}
+
+	fmt.Println("QUEUEING EVENT:", event)
 
 	select {
 	case h.ClickQueue.Events <- event:
+		fmt.Println("EVENT QUEUED")
 	default:
-		fmt.Println("CLICK EVENT QUEUE FULL")
+		fmt.Println("EVENT QUEUE FULL")
 	}
-
-	fmt.Println("REDIRECTING TO:", url.OriginalURL)
 
 	return c.Redirect().Status(fiber.StatusFound).To(url.OriginalURL)
 }
-
 func (h *URLHandler) GetURLStats(c fiber.Ctx) error {
 	shortCode := c.Params("shortCode")
 
 	var url models.URL
+
 	if err := h.DB.Where("short_code = ?", shortCode).First(&url).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "URL not found",
 		})
 	}
 
+	var events []models.ClickEvent
+
+	if err := h.DB.
+		Where("short_url_id = ?", url.ID).
+		Order("created_at DESC").
+		Find(&events).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch click analytics",
+		})
+	}
+
+	uniqueIPs := make(map[string]struct{})
+
+	clicksByDate := make(map[string]int)
+
+	referrers := make(map[string]int)
+
+	for _, event := range events {
+		uniqueIPs[event.IPAddress] = struct{}{}
+
+		date := event.CreatedAt.Format("2006-01-02")
+		clicksByDate[date]++
+
+		referer := event.Referer
+		if referer == "" {
+			referer = "direct"
+		}
+
+		referrers[referer]++
+	}
+
 	return c.JSON(fiber.Map{
-		"original_url": url.OriginalURL,
 		"short_code":   url.ShortCode,
-		"clicks":       url.Clicks,
+		"original_url": url.OriginalURL,
+
+		"summary": fiber.Map{
+			"total_clicks":    len(events),
+			"unique_visitors": len(uniqueIPs),
+		},
+
+		"clicks_by_date": clicksByDate,
+
+		"referrers": referrers,
+
+		"recent_clicks": events,
 	})
 }
 
